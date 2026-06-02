@@ -47,15 +47,23 @@ The insight: exactly-once isn't a single mechanism. It's a stack. Remove any lay
 
 ---
 
-## Why Temporal
+## Why Temporal — and what it costs
 
 The LLM call is the most expensive thing in the pipeline — not in CPU, in consequence. If the agent crashes after calling Claude but before saving the report, that tactical moment is gone. The match moved on.
 
 Temporal persists the full workflow execution history to Postgres. If a worker dies mid-workflow, a restarted worker replays history, skips already-completed activities, and continues from where it left off. The LLM is not called twice. The report is not lost.
 
-The alternative — a simple task queue with Redis — would work for the happy path. But durable retry across restarts, exactly-once execution by workflow ID, and per-activity timeout policies would all have to be hand-rolled. Temporal gives them for free.
+The alternative — a Kafka trigger consumer that calls Claude directly and writes the report — is simpler and has fewer moving parts. But if the process dies between the Claude call and the file write, the report is lost. You'd need to build your own idempotency key check, retry logic, and dead-letter handling. That's most of what Temporal is, minus the UI and the proven production hardening.
 
-The trade-off: one more service to run and understand. Worth it for a pipeline where losing work is the primary failure mode.
+**What Temporal costs you:**
+
+*One more service to operate.* Temporal server plus its own Postgres schema — two extra containers in docker-compose. More moving parts to start, healthcheck, and reason about. Cold start takes 20-30 seconds; the agent can't register until Temporal is healthy, so the dependency chain matters.
+
+*Replay constraints on workflow code.* Workflow functions must be deterministic. You cannot use `time.Now()`, random numbers, or non-deterministic map iteration directly in workflow code — the workflow is replayed from history on restart and must produce the same decisions each time. All I/O lives in activities; the workflow is pure control flow. This is a real mental model shift that catches you the first time you reach for `time.Now()` inside a workflow.
+
+*Overkill at low volume — but almost free at the scale we care about.* Temporal Cloud charges ~$25 per million workflow actions. One match uses roughly 8 actions (4 activities × 2 workflows). At 3,000 matches/month that's $0.60 — negligible. The self-hosted version we run is free.
+
+**The honest tradeoff in one sentence:** Temporal trades operational complexity at setup time for operational simplicity at failure time — the failures that matter most (lost LLM calls, duplicate reports) are handled for you without writing a line of retry logic.
 
 ---
 
