@@ -1,0 +1,7 @@
+baseURL = 'https://shakeel.github.io/'
+languageCode = 'en-us'
+title = 'My Blog'
+theme = 'PaperMod'
+
+[params]
+  homeInfoParams = { Title = "Hi, I'm Shakeel", Content = "Welcome to my blog." }
