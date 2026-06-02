@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+    --theme: #f7f6f3;
+    --entry: #ffffff;
+    --primary: #1a1a1a;
+    --secondary: #6b6b6b;
+    --tertiary: #e8e6e1;
+    --content: #2d2d2d;
+    --code-bg: #f0ede8;
+    --border: #e0ddd8;
+    --gap: 24px;
+}
+
+.dark {
+    --theme: #0d1117;
+    --entry: #161b22;
+    --primary: #e6edf3;
+    --secondary: #8b949e;
+    --tertiary: #21262d;
+    --content: #c9d1d9;
+    --code-bg: #161b22;
+    --border: #30363d;
+}
+
+body {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+    letter-spacing: -0.01em;
+}
+
+code, pre, .highlight {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.875em;
+}
+
+.post-title, h1, h2, h3 {
+    letter-spacing: -0.03em;
+    font-weight: 600;
+}
+
+a {
+    color: #d97706;
+    text-decoration: none;
+}
+
+a:hover {
+    color: #b45309;
+    text-decoration: underline;
+}
+
+.dark a {
+    color: #f59e0b;
+}
+
+.dark a:hover {
+    color: #fbbf24;
+}
