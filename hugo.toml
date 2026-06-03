@@ -2,6 +2,7 @@ baseURL = 'https://shaqmo.github.io/blog/'
 languageCode = 'en-us'
 title = 'My Blog'
 theme = 'PaperMod'
+googleAnalytics = 'G-ZWB807CX35'
 
 [params]
   homeInfoParams = { Title = "Hi, I'm Shakeel", Content = "Welcome to my blog." }
