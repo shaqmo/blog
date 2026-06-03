@@ -6,6 +6,8 @@ draft = false
 
 *A technical account of building halfspace — a real-time football match analysis system — and what went wrong, what the evals revealed, and what I'd do differently.*
 
+**[▶ Live demo — replay three 2018 World Cup matches](https://shaqmo.github.io/blog/halfspace-demo/)**
+
 ---
 
 ## The idea
