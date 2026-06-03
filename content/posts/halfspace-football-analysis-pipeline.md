@@ -8,6 +8,8 @@ draft: false
 
 **<a href="https://shaqmo.github.io/blog/halfspace-demo/" target="_blank" rel="noopener noreferrer">▶ Live demo — replay three 2018 World Cup matches</a>**
 
+*The demo is a pre-recorded replay of the live system — real events, metrics, and AI-generated reports captured from an actual run, replayed in your browser. The underlying pipeline runs in real time against a live Kafka stream; the demo lets you see the output without standing up the infrastructure.*
+
 ---
 
 ## The experiment
