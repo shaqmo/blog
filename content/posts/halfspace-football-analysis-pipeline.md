@@ -1,5 +1,5 @@
 ---
-title: 'Building a Real-Time Football Analysis Pipeline: What I Learned About Distributed Systems'
+title: 'From Live Match Events to AI Tactical Reports: Building a Real-Time Pipeline with Kafka and Temporal'
 date: 2026-06-02
 draft: false
 ---
