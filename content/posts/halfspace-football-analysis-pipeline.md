@@ -18,7 +18,7 @@ StatsBomb publishes detailed football event data — every pass, shot, pressure,
 
 The question I wanted to answer: can you automate the interpretation layer using a message-driven pipeline and an LLM? Not the data collection — that requires human annotators tagging spatial attributes in real time, which is StatsBomb's actual moat. But the analysis that sits downstream of that data.
 
-The interesting part turned out not to be the AI. It was the distributed systems problems that had to be solved before the AI could do anything reliable. This is a record of those decisions.
+Turns out the interesting part wasn't the AI. It was the distributed systems problems that had to be solved before the AI could do anything reliable. This is a record of those decisions.
 
 ---
 
@@ -43,7 +43,7 @@ Before getting into decisions, here is what the system is made of and why each p
 └─────────┘               └─────┘
 ```
 
-**Kafka** is the backbone. Every service communicates through topics — no direct service-to-service calls. The replayer publishes raw match events. The processor consumes them and publishes trigger events. The API consumes events to push to the browser. Kafka was chosen over a message queue like RabbitMQ because it retains messages on disk — consumers can replay history, restart without losing data, and join mid-stream. That replay property turns out to be critical for exactly-once semantics and crash recovery.
+**Kafka** is the backbone. Every service communicates through topics — no direct service-to-service calls. The replayer publishes raw match events. The processor consumes them and publishes trigger events. The API consumes events to push to the browser. Kafka was chosen over a message queue like RabbitMQ because it retains messages on disk — consumers can replay history, restart without losing data, and join mid-stream. And that replay property turns out to be pretty critical for exactly-once semantics and crash recovery.
 
 **The Replayer** reads StatsBomb match JSON files and emits events onto Kafka at configurable speed — 10× real time by default, compressing a 90-minute match into 9 minutes. It simulates a live data feed using the same open data StatsBomb provides to clubs and media companies.
 
@@ -89,7 +89,7 @@ I worked through this in layers, each one plugging a different failure mode:
 
 **Layer 4 — Temporal workflow deduplication.** The metric processor emits a trigger when a period boundary is reached. That trigger starts a Temporal workflow. The workflow ID is the trigger ID. If the trigger is delivered twice to the Kafka consumer, Temporal rejects the second `ExecuteWorkflow` call with `WorkflowExecutionAlreadyStarted` — one report per trigger, no matter how many times the trigger arrives.
 
-**What I learned:** exactly-once isn't a single mechanism. It's a stack. Remove any layer and a different failure mode leaks through. The in-memory dedup handles the common case cheaply. The idempotent upsert handles restarts. The offset-after-write handles write failures. The workflow dedup handles duplicate triggers. Each layer has a specific responsibility.
+**What I learned:** exactly-once isn't a single mechanism. It's a stack. Remove any layer and a different failure mode leaks through — the in-memory dedup handles the common case cheaply, the idempotent upsert handles restarts, the offset-after-write handles write failures, the workflow dedup handles duplicate triggers. Each layer has a specific responsibility.
 
 ---
 
@@ -97,7 +97,7 @@ I worked through this in layers, each one plugging a different failure mode:
 
 The LLM call is the most consequential step in the pipeline — not in CPU cost, but in consequence. If the agent crashes after calling Claude but before saving the report, that tactical moment is gone. The match moved on.
 
-**The simple alternative** is a Kafka trigger consumer that calls Claude directly, writes the report to disk, and commits the offset. This is fewer moving parts. But if the process dies between the Claude call and the file write, the report is lost. You'd need to build your own idempotency key check, your own retry with exponential backoff, your own dead-letter handling. That's most of what Temporal is, minus the UI and the production hardening.
+**The simple alternative** is a Kafka trigger consumer that calls Claude directly, writes the report to disk, and commits the offset. This is less moving parts. But if the process dies between the Claude call and the file write, the report is lost. You'd need to build your own idempotency key check, your own retry with exponential backoff, your own dead-letter handling. That's basically most of what Temporal is, minus the UI and the production hardening.
 
 **The decision:** Temporal. It persists the full workflow execution history to Postgres. If a worker dies mid-workflow, a restarted worker replays history, skips already-completed activities, and continues from where it left off. I saw this directly: killing the agent process mid-`CallLLMActivity` and restarting — Temporal resumed from `SaveReportActivity`. The LLM was not called again. The report was not lost.
 
@@ -108,7 +108,7 @@ CallLLM       → returns cached result (already completed)
 SaveReport    → executes fresh ← only this re-runs
 ```
 
-**What Temporal costs:** one more service (Temporal server plus its own Postgres schema — two extra containers). Replay constraints on workflow code — you cannot use `time.Now()`, random numbers, or non-deterministic map iteration directly in a workflow function, because the workflow is replayed from history on restart and must produce the same decisions each time. All I/O lives in activities; the workflow is pure control flow. This catches you the first time you reach for `time.Now()` inside a workflow.
+**What Temporal costs:** one more service (Temporal server plus its own Postgres schema — two extra containers). Replay constraints on workflow code — you cannot use `time.Now()`, random numbers, or non-deterministic map iteration directly in a workflow function because the workflow is replayed from history on restart and must produce the same decisions each time. All I/O lives in activities, the workflow is pure control flow. This catches you the first time you reach for `time.Now()` inside a workflow.
 
 **Retry policies per activity:** different activities have different failure modes and tolerances.
 
@@ -148,7 +148,7 @@ Temporal's WorkflowID dedup only prevents concurrent duplicates — two `Execute
 
 **The decision:** fix the source. The processor now tracks `triggeredPeriods map[int]bool` on `MatchState`. After emitting the first trigger for a period, it marks that period as done and skips all subsequent boundary events for it. Temporal dedup remains as a backstop for genuine double-delivery, not as the primary guard.
 
-The lesson: Temporal (or any dedup mechanism) handles concurrent duplicates well. Sequential duplicates — where the same logical event arrives again after the first processing completes — require source-level suppression.
+The lesson: Temporal (or any dedup mechanism) handles concurrent duplicates well. Sequential duplicates — where the same logical event arrives again after the first processing completes — these require source-level suppression.
 
 ---
 
@@ -175,7 +175,7 @@ The first design triggered metric snapshots on a time-based ticker — every 5 m
 
 **The decision:** snapshot on event-driven clock boundaries. The processor computes match time from the event's `minute` and `second` fields. When an event crosses a 5-minute match-clock boundary, a snapshot is written. No wall-clock ticker.
 
-**The consequence discovered in production:** StatsBomb events are match actions — passes, shots, pressures. They are not clock ticks. A quiet spell in the match (the ball goes out, substitutions, VAR checks) means no events arrive. If no event crosses the 5-minute boundary, the snapshot doesn't fire until the next event arrives, which might be at minute 7. The snapshots are event-driven, not evenly spaced.
+**The consequence discovered in production:** StatsBomb events are match actions — passes, shots, pressures. They're not clock ticks. A quiet spell in the match (the ball goes out, substitutions, VAR checks) means no events arrive. If no event crosses the 5-minute boundary, the snapshot doesn't fire until the next event arrives, which might be at minute 7. So the snapshots are event-driven, not evenly spaced.
 
 For a production system with real-time delivery, a separate time-based ticker would fire alongside the event consumer to guarantee snapshots at fixed intervals regardless of match activity. For this experiment, event-driven snapshots are sufficient — the match data is dense enough.
 
@@ -183,13 +183,13 @@ For a production system with real-time delivery, a separate time-based ticker wo
 
 ## Decision 7: LLM enforcement hierarchy, discovered through evals
 
-The eval framework was added at the end, but it immediately found bugs that had been present from the start. The evals produce scores. The scores were useful. The *comments* were the bug reports.
+The eval framework was added at the end, but it immediately found bugs that had been present from the start. The evals produce scores. The scores were useful, the *comments* were the bug reports.
 
 **Bug 1 — Phantom team in system prompt.** The LLM-as-judge comment on one report:
 
 > "Misidentifies Team 779 as France when metrics show Argentina dominated (70% tilt, 60.7% possession, 535 passes)"
 
-This pointed at a two-source-of-truth bug. `FetchMetricsActivity` correctly validated `perspectiveTeam` against the actual teams in the match and cleared it when France wasn't playing. But `CallLLMActivity` and `CallLiveObsLLMActivity` read `a.perspectiveTeam` directly — the raw, unvalidated config value — when building the system prompt. The report body was neutral; the LLM's identity was still "You are France's analyst." It hallucinated France into an Argentina match.
+This pointed at a two-source-of-truth bug. `FetchMetricsActivity` correctly validated `perspectiveTeam` against the actual teams in the match and cleared it when France wasn't playing. But `CallLLMActivity` and `CallLiveObsLLMActivity` read `a.perspectiveTeam` directly — the raw, unvalidated config value — when building the system prompt. The report body was neutral, the LLM's identity was still "You are France's analyst." It hallucinated France into an Argentina match.
 
 **Fix:** both LLM call activities now accept `perspectiveTeam string` as an explicit parameter. The workflow passes `metrics.MatchCtx.PerspectiveTeam` — the value that has already passed the guard. The raw `a.perspectiveTeam` is never used in LLM calls. One source of truth.
 
@@ -241,7 +241,7 @@ API ◄── Kafka + Postgres + Reports (disk)
 
 ## What I would do differently
 
-**Provide rolling window data in the prompt from the start.** The half-time prompt showed only cumulative totals. The LLM filled the gap by inventing time-series progressions — "possession climbed to 71% in the final 15 minutes" when the data showed a single cumulative figure. The per-window data was already in Postgres. Not including it was an oversight that inflated the fabrication rate for the entire experiment.
+**Provide rolling window data in the prompt from the start.** The half-time prompt showed only cumulative totals. The LLM filled the gap by inventing time-series progressions — "possession climbed to 71% in the final 15 minutes" when the data only showed a single cumulative figure. The per-window data was already in Postgres, I just didn't include it. That one oversight inflated the fabrication rate for the entire experiment.
 
 **Add evals on day one.** The phantom team bug had been there since the live observation workflow was written. It was invisible in code review and in casual output inspection. The LLM-as-judge comment found it in the first eval run. An eval running on every report means every prompt or code change shows its effect on the score history. Without it, you're guessing.
 
@@ -267,4 +267,4 @@ Three matches, one run, at 20× replay speed:
 
 The pipeline runs at 2–7% of its resource limits under 3-match concurrent load. The bottleneck at scale is LLM throughput — specifically Anthropic's rate limit — not compute.
 
-The gap between "StatsBomb data exists" and "real-time AI tactical analysis" turned out to be mostly distributed systems: exactly-once semantics, durable workflow execution, partitioned state, per-match routing. The LLM integration was the straightforward part once the data layer was reliable.
+Turns out the gap between "StatsBomb data exists" and "real-time AI tactical analysis" was mostly a distributed systems problem: exactly-once semantics, durable workflow execution, partitioned state, per-match routing. The LLM integration was the straightforward part once the data layer was reliable.
