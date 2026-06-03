@@ -10,7 +10,7 @@
   body { background: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; font-size: 13px; }
 
   /* ── landing ── */
-  #landing { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
+  #landing { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; position: relative; }
   #landing h1 { font-size: 28px; color: #f0f6fc; letter-spacing: 2px; margin-bottom: 8px; }
   #landing .subtitle { color: #8b949e; margin-bottom: 48px; text-align: center; line-height: 1.6; }
   .match-cards { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
@@ -20,6 +20,8 @@
   .match-card .comp  { color: #8b949e; font-size: 11px; margin-bottom: 16px; }
   .match-card .badge { display: inline-block; background: #388bfd22; color: #388bfd; border: 1px solid #388bfd44; border-radius: 4px; padding: 3px 10px; font-size: 11px; }
   .demo-note { margin-top: 48px; color: #484f58; font-size: 11px; text-align: center; line-height: 1.8; }
+  .blog-link { position: absolute; top: 24px; left: 24px; color: #8b949e; font-size: 12px; text-decoration: none; }
+  .blog-link:hover { color: #f0f6fc; }
 
   /* ── match view ── */
   #match-view { display: none; flex-direction: column; height: 100vh; }
@@ -85,6 +87,7 @@
 
 <!-- Landing -->
 <div id="landing">
+  <a href="https://shaqmo.github.io/blog/" class="blog-link">← back to blog</a>
   <h1>halfspace</h1>
   <p class="subtitle">Real-time football match analysis pipeline<br>Kafka · Temporal · Claude · Eval</p>
   <div class="match-cards" id="match-cards"></div>
