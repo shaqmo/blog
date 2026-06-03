@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Halfspace — Live Match Analysis Demo</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; font-size: 13px; }
+
+  /* ── landing ── */
+  #landing { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
+  #landing h1 { font-size: 28px; color: #f0f6fc; letter-spacing: 2px; margin-bottom: 8px; }
+  #landing .subtitle { color: #8b949e; margin-bottom: 48px; text-align: center; line-height: 1.6; }
+  .match-cards { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  .match-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 28px 32px; cursor: pointer; transition: border-color .2s, transform .2s; min-width: 280px; text-align: center; }
+  .match-card:hover { border-color: #388bfd; transform: translateY(-2px); }
+  .match-card .teams { font-size: 18px; color: #f0f6fc; margin-bottom: 6px; }
+  .match-card .comp  { color: #8b949e; font-size: 11px; margin-bottom: 16px; }
+  .match-card .badge { display: inline-block; background: #388bfd22; color: #388bfd; border: 1px solid #388bfd44; border-radius: 4px; padding: 3px 10px; font-size: 11px; }
+  .demo-note { margin-top: 48px; color: #484f58; font-size: 11px; text-align: center; line-height: 1.8; }
+
+  /* ── match view ── */
+  #match-view { display: none; flex-direction: column; height: 100vh; }
+  .top-bar { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: #161b22; border-bottom: 1px solid #30363d; flex-shrink: 0; }
+  .back-btn { cursor: pointer; color: #8b949e; padding: 4px 10px; border: 1px solid #30363d; border-radius: 4px; }
+  .back-btn:hover { color: #f0f6fc; border-color: #8b949e; }
+  .match-title { color: #f0f6fc; font-size: 14px; flex: 1; }
+  .clock-badge { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 3px 10px; color: #3fb950; font-size: 12px; min-width: 80px; text-align: center; }
+  .speed-ctrl { display: flex; align-items: center; gap: 8px; color: #8b949e; font-size: 11px; }
+  .speed-ctrl select { background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 2px 6px; font-family: inherit; font-size: 11px; }
+  .play-btn { cursor: pointer; background: #21262d; border: 1px solid #30363d; border-radius: 4px; padding: 4px 12px; color: #c9d1d9; font-family: inherit; font-size: 12px; }
+  .play-btn:hover { border-color: #8b949e; }
+
+  .panels { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 0; flex: 1; overflow: hidden; }
+  .panel { display: flex; flex-direction: column; border-right: 1px solid #30363d; overflow: hidden; }
+  .panel:last-child { border-right: none; }
+  .panel-header { padding: 8px 12px; background: #161b22; border-bottom: 1px solid #30363d; color: #8b949e; font-size: 11px; letter-spacing: 1px; flex-shrink: 0; }
+
+  /* events */
+  #event-feed { flex: 1; overflow-y: auto; padding: 4px 0; }
+  .event-row { padding: 3px 12px; display: flex; gap: 8px; align-items: baseline; line-height: 1.5; }
+  .event-row:hover { background: #161b22; }
+  .event-time { color: #484f58; min-width: 28px; flex-shrink: 0; }
+  .event-icon { min-width: 14px; flex-shrink: 0; }
+  .event-team { min-width: 80px; flex-shrink: 0; font-size: 11px; }
+  .event-team.home { color: #388bfd; }
+  .event-team.away { color: #f85149; }
+  .event-desc { color: #8b949e; font-size: 11px; }
+  .event-row.goal { background: #3fb95022; }
+  .event-row.goal .event-desc { color: #3fb950; }
+  .event-row.shot .event-desc { color: #d29922; }
+  .event-row.period { color: #8b949e; padding: 6px 12px; border-top: 1px solid #21262d; border-bottom: 1px solid #21262d; font-size: 11px; background: #161b22; }
+
+  /* metrics */
+  .metric-tabs { display: flex; gap: 0; flex-shrink: 0; border-bottom: 1px solid #30363d; overflow-x: auto; }
+  .metric-tab { padding: 6px 12px; cursor: pointer; color: #8b949e; font-size: 11px; white-space: nowrap; border-bottom: 2px solid transparent; }
+  .metric-tab.active { color: #388bfd; border-bottom-color: #388bfd; }
+  .chart-wrap { flex: 1; padding: 12px; min-height: 0; position: relative; }
+  #metrics-chart { width: 100% !important; height: 100% !important; }
+
+  /* reports */
+  .report-tabs { display: flex; gap: 0; flex-shrink: 0; border-bottom: 1px solid #30363d; }
+  .report-tab { padding: 6px 12px; cursor: pointer; color: #8b949e; font-size: 11px; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 6px; }
+  .report-tab.active { color: #f0f6fc; border-bottom-color: #f0f6fc; }
+  .badge-dot { background: #f85149; color: #fff; border-radius: 8px; padding: 0 5px; font-size: 10px; }
+  #report-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .report-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #21262d; }
+  .report-item:last-child { border-bottom: none; }
+  .report-label { font-size: 10px; color: #484f58; margin-bottom: 8px; }
+  .report-body { color: #c9d1d9; line-height: 1.7; font-size: 12px; }
+  .report-body h1,.report-body h2,.report-body h3 { color: #f0f6fc; margin: 10px 0 4px; font-size: 13px; }
+  .report-body p { margin-bottom: 6px; }
+  .report-body strong { color: #f0f6fc; }
+  .report-body em { color: #d29922; font-style: normal; }
+  .report-placeholder { color: #484f58; font-size: 12px; padding: 20px 0; }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- Landing -->
+<div id="landing">
+  <h1>halfspace</h1>
+  <p class="subtitle">Real-time football match analysis pipeline<br>Kafka · Temporal · Claude · Eval</p>
+  <div class="match-cards" id="match-cards"></div>
+  <div class="demo-note">
+    Pre-recorded demo · 2018 FIFA World Cup · StatsBomb open data<br>
+    Events, metrics, and AI-authored reports replayed in real time
+  </div>
+</div>
+
+<!-- Match view -->
+<div id="match-view">
+  <div class="top-bar">
+    <span class="back-btn" onclick="goHome()">← matches</span>
+    <span class="match-title" id="match-title"></span>
+    <span class="clock-badge" id="clock-badge">0' P1</span>
+    <div class="speed-ctrl">
+      speed
+      <select id="speed-select" onchange="setSpeed(this.value)">
+        <option value="1">1×</option>
+        <option value="2">2×</option>
+        <option value="5" selected>5×</option>
+        <option value="10">10×</option>
+      </select>
+    </div>
+    <button class="play-btn" id="play-btn" onclick="togglePlay()">⏸ pause</button>
+  </div>
+  <div class="panels">
+    <!-- events -->
+    <div class="panel">
+      <div class="panel-header">LIVE EVENTS</div>
+      <div id="event-feed"></div>
+    </div>
+    <!-- metrics -->
+    <div class="panel">
+      <div class="panel-header">TEAM METRICS</div>
+      <div class="metric-tabs" id="metric-tabs"></div>
+      <div class="chart-wrap"><canvas id="metrics-chart"></canvas></div>
+    </div>
+    <!-- reports -->
+    <div class="panel">
+      <div class="panel-header">REPORTS</div>
+      <div class="report-tabs">
+        <div class="report-tab active" id="tab-ht" onclick="showReports('ht')">HALF-TIME <span class="badge-dot" id="badge-ht" style="display:none"></span></div>
+        <div class="report-tab" id="tab-live" onclick="showReports('live')">LIVE <span class="badge-dot" id="badge-live" style="display:none"></span></div>
+      </div>
+      <div id="report-panel"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── data ──────────────────────────────────────────────────────────────────────
+let DEMO = null;
+
+async function loadData() {
+  const r = await fetch('data.json');
+  DEMO = await r.json();
+  buildLanding();
+}
+
+// ── landing ───────────────────────────────────────────────────────────────────
+function buildLanding() {
+  const el = document.getElementById('match-cards');
+  DEMO.matches.forEach(m => {
+    const card = document.createElement('div');
+    card.className = 'match-card';
+    card.innerHTML = `
+      <div class="teams">${m.home} vs ${m.away}</div>
+      <div class="comp">${m.competition}</div>
+      <div class="badge">▶ replay</div>`;
+    card.onclick = () => startMatch(m.id);
+    el.appendChild(card);
+  });
+}
+
+function goHome() {
+  stopReplay();
+  document.getElementById('landing').style.display = 'flex';
+  document.getElementById('match-view').style.display = 'none';
+}
+
+// ── match replay ──────────────────────────────────────────────────────────────
+let match = null;
+let eventIdx = 0, snapIdx = 0, reportIdx = 0;
+let simClock = 0; // seconds of match time elapsed
+let lastTs = null;
+let rafId = null;
+let playing = true;
+let speed = 5;
+let chart = null;
+let metricsHistory = [];
+let activeMetric = 'possession_pct';
+let htReports = [], liveReports = [];
+let unseenHt = 0, unseenLive = 0;
+let activeReportTab = 'ht';
+
+const METRIC_LABELS = {
+  possession_pct: 'Possession %', xg: 'xG', field_tilt: 'Field Tilt %',
+  ppda: 'PPDA', pass_count: 'Passes', pass_complete_pct: 'Pass Acc. %', shot_count: 'Shots'
+};
+const METRIC_KEYS = Object.keys(METRIC_LABELS);
+
+const ICONS = {
+  'Pass': '·', 'Carry': '·', 'Pressure': '·', 'Shot': '○', 'Goal': '⚽',
+  'Yellow Card': '🟨', 'Red Card': '🟥', 'Half Start': '▶', 'Half End': '■',
+  'Substitution': '↔', 'Foul Committed': '·', 'default': '·'
+};
+
+function startMatch(id) {
+  match = DEMO.matches.find(m => m.id === id);
+  match.reports.sort((a, b) => (a.clock || 0) - (b.clock || 0));
+  eventIdx = 0; snapIdx = 0; reportIdx = 0;
+  simClock = 0; lastTs = null; playing = true;
+  htReports = []; liveReports = [];
+  unseenHt = 0; unseenLive = 0;
+  activeReportTab = 'ht';
+  metricsHistory = [];
+  chart = null;
+
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById('match-view').style.display = 'flex';
+  document.getElementById('match-title').textContent = `${match.home} vs ${match.away} — ${match.competition}`;
+  document.getElementById('clock-badge').textContent = "0' P1";
+  document.getElementById('event-feed').innerHTML = '';
+  document.getElementById('report-panel').innerHTML = `<p class="report-placeholder">Half-time reports appear at period boundaries.</p>`;
+  document.getElementById('play-btn').textContent = '⏸ pause';
+
+  buildMetricTabs();
+  initChart();
+  showReports('ht');
+  updateBadges();
+
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(tick);
+}
+
+function stopReplay() {
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  if (chart)  { chart.destroy(); chart = null; }
+}
+
+function togglePlay() {
+  playing = !playing;
+  document.getElementById('play-btn').textContent = playing ? '⏸ pause' : '▶ play';
+  if (playing) { lastTs = null; rafId = requestAnimationFrame(tick); }
+}
+
+function setSpeed(v) { speed = parseFloat(v); }
+
+// ── main loop ─────────────────────────────────────────────────────────────────
+function tick(ts) {
+  if (!playing) return;
+  if (!lastTs) { lastTs = ts; rafId = requestAnimationFrame(tick); return; }
+
+  const wallDelta = (ts - lastTs) / 1000; // seconds of wall time
+  lastTs = ts;
+  simClock += wallDelta * speed * 10; // 10 = base match-clock seconds per wall-second
+
+  // emit events up to simClock
+  while (eventIdx < match.events.length) {
+    const e = match.events[eventIdx];
+    const eClock = e.minute * 60 + e.second + (e.period > 1 ? 45*60 : 0);
+    if (eClock > simClock) break;
+    renderEvent(e);
+    eventIdx++;
+  }
+
+  // emit snapshots
+  while (snapIdx < match.snapshots.length) {
+    const s = match.snapshots[snapIdx];
+    if (s.clock > simClock) break;
+    addSnapshot(s);
+    snapIdx++;
+  }
+
+  // emit reports
+  while (reportIdx < match.reports.length) {
+    const rep = match.reports[reportIdx];
+    const repClock = rep.clock || (rep.period === 1 ? 45*60 : rep.period === 2 ? 90*60 : 0);
+    if (repClock > simClock) break;
+    addReport(rep);
+    reportIdx++;
+  }
+
+  // update clock display
+  const dispMin = Math.floor(simClock / 60);
+  const period  = simClock < 45*60 ? 1 : 2;
+  document.getElementById('clock-badge').textContent = `${Math.min(dispMin, 90)}' P${period}`;
+
+  if (eventIdx < match.events.length || snapIdx < match.snapshots.length || reportIdx < match.reports.length) {
+    rafId = requestAnimationFrame(tick);
+  } else {
+    document.getElementById('clock-badge').textContent = "FT";
+    document.getElementById('play-btn').textContent = '✓ done';
+    playing = false;
+  }
+}
+
+// ── events ────────────────────────────────────────────────────────────────────
+function renderEvent(e) {
+  const feed = document.getElementById('event-feed');
+  const type = e.type;
+
+  if (type === 'Half Start' || type === 'Half End') {
+    const row = document.createElement('div');
+    row.className = 'event-row period';
+    row.textContent = `${ICONS[type] || '·'} ${type} — Period ${e.period}`;
+    feed.appendChild(row);
+    feed.scrollTop = feed.scrollHeight;
+    return;
+  }
+
+  const isGoal = type === 'Goal';
+  const isShot = type === 'Shot';
+  const isCard = type === 'Yellow Card' || type === 'Red Card';
+
+  const homeTeam = match.home;
+  const isHome = e.team === homeTeam;
+
+  const row = document.createElement('div');
+  row.className = `event-row${isGoal?' goal':isShot?' shot':''}`;
+
+  const time   = Object.assign(document.createElement('span'), {className:'event-time', textContent:`${e.minute}'`});
+  const icon   = Object.assign(document.createElement('span'), {className:'event-icon', textContent: isGoal?'⚽':isCard?(type==='Yellow Card'?'🟨':'🟥'):(ICONS[type]||'·')});
+  const team   = Object.assign(document.createElement('span'), {className:`event-team ${isHome?'home':'away'}`, textContent: e.team});
+  const desc   = Object.assign(document.createElement('span'), {className:'event-desc'});
+
+  const xgStr  = e.xg != null ? ` (xG ${e.xg})` : '';
+  const outcStr= e.outcome ? ` — ${e.outcome}` : '';
+  desc.textContent = (e.player || '') + (isShot || isGoal ? ` Shot${outcStr}${xgStr}` : '');
+
+  row.append(time, icon, team, desc);
+  feed.appendChild(row);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+// ── metrics ───────────────────────────────────────────────────────────────────
+function buildMetricTabs() {
+  const el = document.getElementById('metric-tabs');
+  el.innerHTML = '';
+  METRIC_KEYS.forEach(key => {
+    const tab = document.createElement('div');
+    tab.className = `metric-tab${key===activeMetric?' active':''}`;
+    tab.textContent = METRIC_LABELS[key];
+    tab.onclick = () => { activeMetric = key; document.querySelectorAll('.metric-tab').forEach(t=>t.classList.remove('active')); tab.classList.add('active'); updateChart(); };
+    el.appendChild(tab);
+  });
+}
+
+function initChart() {
+  if (chart) { chart.destroy(); chart = null; }
+  const ctx = document.getElementById('metrics-chart').getContext('2d');
+  Chart.defaults.color = '#8b949e';
+  Chart.defaults.font.family = "'Courier New', monospace";
+  Chart.defaults.font.size = 11;
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: match.home, data: [], borderColor: '#388bfd', backgroundColor: '#388bfd22', tension: 0.3, pointRadius: 3, fill: false },
+      { label: match.away, data: [], borderColor: '#f85149', backgroundColor: '#f8514922', tension: 0.3, pointRadius: 3, fill: false },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, padding: 16 } },
+        title:  { display: true, text: METRIC_LABELS[activeMetric], color: '#f0f6fc', font: { size: 12 } },
+        tooltip: { mode: 'index', intersect: false },
+      },
+      scales: {
+        x: { grid: { color: '#21262d' }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+        y: { grid: { color: '#21262d' }, beginAtZero: false },
+      },
+    },
+  });
+}
+
+function addSnapshot(s) {
+  const teams = Object.entries(match.team_names);
+  if (teams.length < 2) return;
+  const [homeId] = teams.find(([,n]) => n === match.home) || teams[0];
+  const [awayId] = teams.find(([,n]) => n === match.away) || teams[1];
+  metricsHistory.push({
+    clock: s.clock,
+    home: s.teams[homeId] || {},
+    away: s.teams[awayId] || {},
+  });
+  updateChart();
+}
+
+function updateChart() {
+  if (!chart || !metricsHistory.length) return;
+  const fmtClock = c => `${Math.floor(c/60)}:${String(c%60).padStart(2,'0')}`;
+  chart.data.labels = metricsHistory.map(s => fmtClock(s.clock));
+  chart.data.datasets[0].data = metricsHistory.map(s => s.home[activeMetric] ?? null);
+  chart.data.datasets[1].data = metricsHistory.map(s => s.away[activeMetric] ?? null);
+  chart.options.plugins.title.text = METRIC_LABELS[activeMetric];
+  chart.update('none');
+}
+
+// ── reports ───────────────────────────────────────────────────────────────────
+function addReport(rep) {
+  if (rep.type === 'half_time') {
+    htReports.push(rep);
+    if (activeReportTab !== 'ht') unseenHt++;
+  } else {
+    liveReports.push(rep);
+    if (activeReportTab !== 'live') unseenLive++;
+  }
+  updateBadges();
+  if ((rep.type === 'half_time' && activeReportTab === 'ht') ||
+      (rep.type === 'live_observation' && activeReportTab === 'live')) {
+    renderReports();
+  }
+}
+
+function showReports(tab) {
+  activeReportTab = tab;
+  document.getElementById('tab-ht').classList.toggle('active', tab === 'ht');
+  document.getElementById('tab-live').classList.toggle('active', tab === 'live');
+  if (tab === 'ht') unseenHt = 0;
+  else unseenLive = 0;
+  updateBadges();
+  renderReports();
+}
+
+function updateBadges() {
+  const bht  = document.getElementById('badge-ht');
+  const blive = document.getElementById('badge-live');
+  bht.style.display  = unseenHt   > 0 ? 'inline' : 'none';
+  blive.style.display = unseenLive > 0 ? 'inline' : 'none';
+  bht.textContent   = unseenHt;
+  blive.textContent = unseenLive;
+}
+
+function renderReports() {
+  const panel = document.getElementById('report-panel');
+  const reports = activeReportTab === 'ht' ? htReports : liveReports;
+  if (!reports.length) {
+    panel.innerHTML = `<p class="report-placeholder">${activeReportTab === 'ht' ? 'Half-time reports appear at period boundaries.' : 'Live observations appear when metrics cross thresholds.'}</p>`;
+    return;
+  }
+  panel.innerHTML = '';
+  [...reports].reverse().forEach(rep => {
+    const item = document.createElement('div');
+    item.className = 'report-item';
+    const min = Math.floor(rep.clock / 60);
+    const htLabel = rep.period === 1 ? 'Half-Time Report — Period 1' : 'Full-Time Report — Period 2';
+    item.innerHTML = `<div class="report-label">${rep.type === 'half_time' ? htLabel : `Live — ${min}'`}</div><div class="report-body">${renderMarkdown(rep.content)}</div>`;
+    panel.appendChild(item);
+  });
+}
+
+function renderMarkdown(md) {
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inline = s => esc(s)
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/`(.+?)`/g,'<code>$1</code>');
+  const lines = md.split('\n');
+  let html = '', i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^#{1,3}\s/.test(line)) {
+      html += `<h3>${inline(line.replace(/^#+\s/,''))}</h3>`;
+    } else if (/^\d+\.\s/.test(line)) {
+      html += `<p>${inline(line)}</p>`;
+    } else if (/^[-*]\s/.test(line)) {
+      html += `<p>• ${inline(line.slice(2))}</p>`;
+    } else if (line.trim()) {
+      html += `<p>${inline(line)}</p>`;
+    }
+    i++;
+  }
+  return html;
+}
+
+loadData();
+</script>
+</body>
+</html>
