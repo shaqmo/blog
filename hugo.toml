@@ -5,3 +5,8 @@ theme = 'PaperMod'
 
 [params]
   homeInfoParams = { Title = "Hi, I'm Shakeel", Content = "Welcome to my blog." }
+
+[[menus.main]]
+  name = 'About'
+  url = '/about/'
+  weight = 10
